@@ -1,6 +1,8 @@
 image_response.json
 *.png
 *.jpg
+!examples/*.png
+!examples/*.jpg
 __pycache__/
 .venv/
 .env
