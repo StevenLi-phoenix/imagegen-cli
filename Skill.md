@@ -1,12 +1,12 @@
 ---
 name: image-gen
-description: Generate images via OpenAI gpt-image-* or OpenRouter gpt-5.4-image-2 using the `imagegen` CLI. Auto-saves raw API response to avoid paid re-runs when extraction fails. Use when user asks to generate/create an image via API.
-version: 1.0.0
+description: Generate images via OpenAI, OpenRouter, or Google Gemini through the `imagegen` CLI. Auto-routes by model name and auto-saves raw API response to avoid paid re-runs when extraction fails. Use when user asks to generate/create an image via API.
+version: 1.1.0
 ---
 
 # Image Generation
 
-Use the `imagegen` CLI (already on PATH, symlinked from `~/.claude/skills/image-gen/image_gen.py`).
+Use the `imagegen` CLI (install per the [repo README](https://github.com/StevenLi-phoenix/imagegen-cli) — symlinks `image_gen.py` into `~/.local/bin/imagegen`).
 
 ## Usage
 
@@ -14,11 +14,14 @@ Use the `imagegen` CLI (already on PATH, symlinked from `~/.claude/skills/image-
 # Default: OpenRouter / openai/gpt-5.4-image-2 (no org verification needed)
 imagegen "your prompt here"
 
-# Use OpenAI direct (cheaper, but gpt-image-2 needs org verification)
-imagegen "your prompt" --provider openai
+# Auto-routes by model name — no --provider needed
+imagegen "prompt" --model gpt-image-2                  # → OpenAI direct
+imagegen "prompt" --model gemini-3-pro-image-preview   # → Gemini direct
+imagegen "prompt" --model imagen-4.0-generate-preview  # → Gemini Imagen :predict
+imagegen "prompt" --model openai/gpt-5.4-image-2       # → OpenRouter
 
-# OpenAI fallback model (no verification needed)
-imagegen "your prompt" --provider openai --model gpt-image-1
+# Force a specific provider when the model name is ambiguous
+imagegen "prompt" --provider openai --model gpt-image-1
 
 # Re-extract from cached response (FREE — no API call)
 imagegen
@@ -39,14 +42,18 @@ imagegen "your prompt" --out /tmp/myimages --size 1024x1024 --quality medium
 
 ## Provider Selection Cheat-Sheet
 
-- `--provider openai` (default) + `--model gpt-image-2` → cheapest+best, **needs org verification**
-- `--provider openai` + `--model gpt-image-1` → fallback when org not verified (~$0.03)
-- `--provider openrouter` → uses `openai/gpt-5.4-image-2`, no verification needed (~$0.23)
+- `openrouter` (default) → `openai/gpt-5.4-image-2`, no org verification, ~$0.22/img
+- `openai` + `gpt-image-2` → cheapest OpenAI direct, **needs org verification**, ~$0.05
+- `openai` + `gpt-image-1` → fallback when org not verified, ~$0.03
+- `gemini` + `gemini-3-pro-image-preview` → Google direct, see [pricing](https://ai.google.dev/pricing)
+
+Auto-detection: model with `/` → OpenRouter; starts with `gemini`/`imagen` → Gemini; starts with `dall-e`/`gpt-image` → OpenAI.
 
 ## Requirements
 
 - `OPENAI_API_KEY` env var (for openai provider)
 - `OPENROUTER_API_KEY` env var (for openrouter provider)
+- `GEMINI_API_KEY` env var (for gemini provider, from Google AI Studio)
 - Python 3 with `httpx` installed
 
 If `httpx` is missing in the project venv: activate venv, then `uv pip install httpx`.

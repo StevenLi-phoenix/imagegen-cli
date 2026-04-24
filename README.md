@@ -1,6 +1,6 @@
 # imagegen
 
-A tiny one-file CLI for generating images via OpenAI's `gpt-image-*` family or OpenRouter's `openai/gpt-5.4-image-2`. One command, no SDK, no organization verification (when using OpenRouter).
+A tiny one-file CLI for generating images across OpenAI, OpenRouter, and Google Gemini — best-effort support for any image model. One command, no SDK, no organization verification (when using OpenRouter).
 
 ## Why
 
@@ -17,9 +17,9 @@ That's it. You get a PNG and a cost line. No SDK install, no boilerplate, no fid
 </p>
 
 - **Default works without OpenAI organization verification** — uses OpenRouter, which doesn't require it
-- **Switch to OpenAI direct with one flag** — when you want the cheaper rate
-- **Cost logging on every call** — token usage and dollar amount in stderr
-- **Handles both response formats** — OpenAI's `data[].b64_json` and OpenRouter's `choices[0].message.images[]`
+- **Auto-routes by model name** — pass `gpt-image-2`, `openai/gpt-5.4-image-2`, `gemini-3-pro-image-preview`, or `imagen-4.0-generate-preview` and it picks the right provider
+- **Best-effort response parsing** — handles OpenAI's `data[].b64_json`, OpenRouter's `choices[].message.images[]`, Gemini's `candidates[].content.parts[].inlineData`, and Imagen's `predictions[].bytesBase64Encoded`
+- **Cost logging on every call** — token usage and dollar amount in stderr (or token counts when the provider doesn't return cost)
 
 ## Install
 
@@ -35,14 +35,15 @@ ln -s "$PWD/image_gen.py" ~/.local/bin/imagegen
 
 ## Setup
 
-Set one (or both) of:
+Set any of:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-v1-...    # default provider
 export OPENAI_API_KEY=sk-...               # for --provider openai
+export GEMINI_API_KEY=...                  # for --provider gemini (Google AI Studio)
 ```
 
-Get an OpenRouter key at https://openrouter.ai/keys (no org verification required).
+Get keys: [OpenRouter](https://openrouter.ai/keys) (no org verification), [OpenAI](https://platform.openai.com/api-keys), [Gemini](https://aistudio.google.com/apikey).
 
 ## Usage
 
@@ -50,10 +51,13 @@ Get an OpenRouter key at https://openrouter.ai/keys (no org verification require
 # Default: OpenRouter / openai/gpt-5.4-image-2 (no org verification needed)
 imagegen "your prompt here"
 
-# Use OpenAI direct (cheaper, but gpt-image-2 needs org verification)
-imagegen "your prompt" --provider openai
+# Auto-routes by model name — no --provider needed
+imagegen "your prompt" --model gpt-image-2                 # → OpenAI direct
+imagegen "your prompt" --model openai/gpt-5.4-image-2      # → OpenRouter
+imagegen "your prompt" --model gemini-3-pro-image-preview  # → Gemini
+imagegen "your prompt" --model imagen-4.0-generate-preview # → Gemini (Imagen :predict)
 
-# OpenAI fallback model (no verification needed)
+# Force a specific provider (useful when a model name is ambiguous)
 imagegen "your prompt" --provider openai --model gpt-image-1
 
 # Custom output dir / size / quality
@@ -71,7 +75,7 @@ imagegen "new prompt" --force
 Each call writes to the output directory (default: cwd):
 
 - `image_response.json` — full raw API response (also serves as a cache for free re-extraction)
-- `image_0.png` (OpenAI) or `image_or_0.png` (OpenRouter) — the generated PNG
+- One or more image files, named by provider: `image_{i}.png` (OpenAI), `image_or_{choice}_{i}.png` (OpenRouter), `image_gm_{candidate}_{i}.{ext}` (Gemini), `image_im_{i}.{ext}` (Imagen). Extension follows the response `mimeType` (png/jpeg/webp).
 
 And logs to stderr:
 
@@ -87,14 +91,20 @@ And logs to stderr:
 
 ## Provider / Model Cheat-Sheet
 
-| Provider | Model | Cost (1024² medium) | Auth |
+| Provider | Example models | Cost (1024² medium) | Auth |
 |---|---|---|---|
-| `openrouter` (default) | `openai/gpt-5.4-image-2` | ~$0.22 | `OPENROUTER_API_KEY` |
-| `openai` | `gpt-image-2` | ~$0.05 | `OPENAI_API_KEY` + verified org |
-| `openai` | `gpt-image-1` | ~$0.03 | `OPENAI_API_KEY` |
-| `openai` | `dall-e-3` | $0.04–$0.12 | `OPENAI_API_KEY` |
+| `openrouter` (default) | `openai/gpt-5.4-image-2`, `google/gemini-3-pro-image`, any `vendor/model` | ~$0.22 for gpt-5.4-image-2 | `OPENROUTER_API_KEY` |
+| `openai` | `gpt-image-2`, `gpt-image-1`, `dall-e-3`, `dall-e-2` | ~$0.05 / $0.03 / $0.04–0.12 | `OPENAI_API_KEY` (+ verified org for `gpt-image-2`) |
+| `gemini` | `gemini-3-pro-image-preview`, `gemini-2.5-flash-image`, `imagen-4.0-generate-preview`, `imagen-3.0-generate-001` | see [pricing](https://ai.google.dev/pricing) | `GEMINI_API_KEY` |
 
-OpenRouter is the default because it works without OpenAI organization verification. It's roughly 7× more expensive than direct API for `gpt-image-2`, so switch to `--provider openai` once you've verified your org.
+OpenRouter is the default because it works without OpenAI organization verification. It's roughly 7× more expensive than direct API for `gpt-image-2`, so switch providers once you've verified your org or have a Gemini key.
+
+### Auto-routing rules
+
+- Model contains `/` → `openrouter` (e.g., `openai/gpt-5.4-image-2`)
+- Model starts with `gemini` or `imagen` → `gemini`
+- Model starts with `dall-e` or `gpt-image` → `openai`
+- Otherwise → `openrouter` (or pass `--provider` explicitly)
 
 ## Common Errors
 
